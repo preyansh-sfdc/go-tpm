@@ -827,7 +827,8 @@ type CreationData struct {
 	OutsideInfo         tpmutil.U16Bytes
 }
 
-func (cd *CreationData) encode() ([]byte, error) {
+// EncodeCreationData encodes byte array to TPMS_CREATION_DATA message.
+func (cd *CreationData) EncodeCreationData() ([]byte, error) {
 	sel, err := encodeTPMLPCRSelection(cd.PCRSelection)
 	if err != nil {
 		return nil, fmt.Errorf("encoding PCRSelection: %v", err)

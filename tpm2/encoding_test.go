@@ -54,7 +54,7 @@ func TestEncodeDecodeCreationData(t *testing.T) {
 		OutsideInfo: []byte{7, 8, 9},
 	}
 
-	encoded, err := cd.encode()
+	encoded, err := cd.EncodeCreationData()
 	if err != nil {
 		t.Fatalf("error encoding CreationData: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestEncodeCreate(t *testing.T) {
 		},
 	}
 	auth := AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession}
-	cmdBytes, err := encodeCreate(HandleOwner, pcrSelection7, auth, defaultPassword, []byte{255} /*sensitiveData*/, params)
+	cmdBytes, err := encodeCreate(HandleOwner, pcrSelection7, auth, defaultPassword, []byte{255} /*sensitiveData*/, params, []byte("TEST"))
 	if err != nil {
 		t.Fatal(err)
 	}

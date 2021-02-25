@@ -375,7 +375,7 @@ func encodeSensitiveArea(s tpmsSensitiveCreate) ([]byte, error) {
 }
 
 // encodeCreate works for both TPM2_Create and TPM2_CreatePrimary.
-func encodeCreate(owner tpmutil.Handle, sel PCRSelection, auth AuthCommand, ownerPassword string, sensitiveData []byte, pub Public) ([]byte, error) {
+func encodeCreate(owner tpmutil.Handle, sel PCRSelection, auth AuthCommand, ownerPassword string, sensitiveData []byte, pub Public, outsideInfo []byte) ([]byte, error) {
 	parent, err := tpmutil.Pack(owner)
 	if err != nil {
 		return nil, err
@@ -399,7 +399,7 @@ func encodeCreate(owner tpmutil.Handle, sel PCRSelection, auth AuthCommand, owne
 	if err != nil {
 		return nil, err
 	}
-	outsideInfo, err := tpmutil.Pack(tpmutil.U16Bytes(nil))
+	outsideInfoBlob, err := tpmutil.Pack(tpmutil.U16Bytes(outsideInfo))
 	if err != nil {
 		return nil, err
 	}
@@ -412,7 +412,7 @@ func encodeCreate(owner tpmutil.Handle, sel PCRSelection, auth AuthCommand, owne
 		encodedAuth,
 		inSensitive,
 		publicBlob,
-		outsideInfo,
+		outsideInfoBlob,
 		creationPCR,
 	)
 }
@@ -462,7 +462,7 @@ func CreatePrimary(rw io.ReadWriter, owner tpmutil.Handle, sel PCRSelection, par
 // are returned, and they are returned in relatively raw form.
 func CreatePrimaryEx(rw io.ReadWriter, owner tpmutil.Handle, sel PCRSelection, parentPassword, ownerPassword string, pub Public) (keyHandle tpmutil.Handle, public, creationData, creationHash []byte, ticket Ticket, creationName []byte, err error) {
 	auth := AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(parentPassword)}
-	Cmd, err := encodeCreate(owner, sel, auth, ownerPassword, nil /*inSensitive*/, pub)
+	Cmd, err := encodeCreate(owner, sel, auth, ownerPassword, nil /*inSensitive*/, pub, nil /*OutsideInfo*/)
 	if err != nil {
 		return 0, nil, nil, nil, Ticket{}, nil, err
 	}
@@ -527,8 +527,8 @@ func decodeCreate(in []byte) (private, public, creationData, creationHash tpmuti
 	return private, public, creationData, creationHash, creationTicket, nil
 }
 
-func create(rw io.ReadWriter, parentHandle tpmutil.Handle, auth AuthCommand, objectPassword string, sensitiveData []byte, pub Public, pcrSelection PCRSelection) (private, public, creationData, creationHash []byte, creationTicket Ticket, err error) {
-	cmd, err := encodeCreate(parentHandle, pcrSelection, auth, objectPassword, sensitiveData, pub)
+func create(rw io.ReadWriter, parentHandle tpmutil.Handle, auth AuthCommand, objectPassword string, sensitiveData []byte, pub Public, pcrSelection PCRSelection, outsideInfo []byte) (private, public, creationData, creationHash []byte, creationTicket Ticket, err error) {
+	cmd, err := encodeCreate(parentHandle, pcrSelection, auth, objectPassword, sensitiveData, pub, outsideInfo)
 	if err != nil {
 		return nil, nil, nil, nil, Ticket{}, err
 	}
@@ -544,21 +544,28 @@ func create(rw io.ReadWriter, parentHandle tpmutil.Handle, auth AuthCommand, obj
 // creation data, a hash of said data and the creation ticket.
 func CreateKey(rw io.ReadWriter, owner tpmutil.Handle, sel PCRSelection, parentPassword, ownerPassword string, pub Public) (private, public, creationData, creationHash []byte, creationTicket Ticket, err error) {
 	auth := AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(parentPassword)}
-	return create(rw, owner, auth, ownerPassword, nil /*inSensitive*/, pub, sel)
+	return create(rw, owner, auth, ownerPassword, nil /*inSensitive*/, pub, sel, nil /*OutsideInfo*/)
 }
 
 // CreateKeyUsingAuth creates a new key pair under the owner handle using the
 // provided AuthCommand. Returns private key and public key blobs as well as
 // the creation data, a hash of said data, and the creation ticket.
 func CreateKeyUsingAuth(rw io.ReadWriter, owner tpmutil.Handle, sel PCRSelection, auth AuthCommand, ownerPassword string, pub Public) (private, public, creationData, creationHash []byte, creationTicket Ticket, err error) {
-	return create(rw, owner, auth, ownerPassword, nil /*inSensitive*/, pub, sel)
+	return create(rw, owner, auth, ownerPassword, nil /*inSensitive*/, pub, sel, nil /*OutsideInfo*/)
 }
 
 // CreateKeyWithSensitive is very similar to CreateKey, except
 // that it can take in a piece of sensitive data.
 func CreateKeyWithSensitive(rw io.ReadWriter, owner tpmutil.Handle, sel PCRSelection, parentPassword, ownerPassword string, pub Public, sensitive []byte) (private, public, creationData, creationHash []byte, creationTicket Ticket, err error) {
 	auth := AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(parentPassword)}
-	return create(rw, owner, auth, ownerPassword, sensitive, pub, sel)
+	return create(rw, owner, auth, ownerPassword, sensitive, pub, sel, nil /*OutsideInfo*/)
+}
+
+// CreateKeyWithOutsideInfo is very similar to CreateKey, except
+// that it returns the outside information.
+func CreateKeyWithOutsideInfo(rw io.ReadWriter, owner tpmutil.Handle, sel PCRSelection, parentPassword, ownerPassword string, pub Public, outsideInfo []byte) (private, public, creationData, creationHash []byte, creationTicket Ticket, err error) {
+	auth := AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(parentPassword)}
+	return create(rw, owner, auth, ownerPassword, nil /*inSensitive*/, pub, sel, outsideInfo)
 }
 
 // Seal creates a data blob object that seals the sensitive data under a parent and with a
@@ -572,7 +579,7 @@ func Seal(rw io.ReadWriter, parentHandle tpmutil.Handle, parentPassword, objectP
 		AuthPolicy: objectAuthPolicy,
 	}
 	auth := AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(parentPassword)}
-	private, public, _, _, _, err := create(rw, parentHandle, auth, objectPassword, sensitiveData, inPublic, PCRSelection{})
+	private, public, _, _, _, err := create(rw, parentHandle, auth, objectPassword, sensitiveData, inPublic, PCRSelection{}, nil /*OutsideInfo*/)
 	if err != nil {
 		return nil, nil, err
 	}
